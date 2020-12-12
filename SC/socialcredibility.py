@@ -18,7 +18,7 @@ import pickle
 class CerealKillers_SocialCredibility:
     def __init__(self):
         config = configparser.ConfigParser()
-        config.read('/content/CerealKillers_AlternusVera/SC/twitter_api.ini')
+        config.read('/content/common-alternusvera/SC/twitter_api.ini')
         self.user_info = {}
         self.user_data = []
         self.consumer_key = config.get('default', 'apikey')
