@@ -7,6 +7,12 @@ Original file is located at
     https://colab.research.google.com/drive/1TaeMjEUdMjqsVmcebqgPS25srDiNc_-k
 """
 
+from scipy import spatial
+from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.preprocessing import scale
+from sklearn.feature_extraction.text import TfidfVectorizer
+from nltk.stem.wordnet import WordNetLemmatizer
+from gensim import corpora, models
 import pickle
 import re
 from collections import Counter
@@ -24,93 +30,90 @@ import re
 import statistics
 nltk.download('averaged_perceptron_tagger')
 
-from gensim import corpora, models
-from nltk.stem.wordnet import WordNetLemmatizer
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.preprocessing import scale
-from sklearn.metrics.pairwise import cosine_similarity
-from scipy import spatial
-import warnings
 nltk.download('punkt')
 nltk.download('vader_lexicon')
 warnings.filterwarnings('ignore')
 nltk.download('wordnet')
-nltk.download("stopwords") 
+nltk.download("stopwords")
 
 
 def predictIntention(text):
     def cleaning(statement):
         import nltk
-        
+
         # 1. Remove non-letters/Special Characters and Punctuations
         news = re.sub("[^a-zA-Z]", " ", statement)
-        
+
         # 2. Convert to lower case.
-        news =  news.lower()
-        
+        news = news.lower()
+
         # 3. Tokenize.
-        news_words = nltk.word_tokenize( news)
-        
+        news_words = nltk.word_tokenize(news)
+
         # 4. Convert the stopwords list to "set" data type.
         stops = set(nltk.corpus.stopwords.words("english"))
-        
-        # 5. Remove stop words. 
-        words = [w for w in  news_words  if not w in stops]
-        
-        # 6. Lemmentize 
-        wordnet_lem = [ WordNetLemmatizer().lemmatize(w) for w in words ]
-        
+
+        # 5. Remove stop words.
+        words = [w for w in news_words if not w in stops]
+
+        # 6. Lemmentize
+        wordnet_lem = [WordNetLemmatizer().lemmatize(w) for w in words]
+
         # 7. Stemming
-        stems = [nltk.stem.SnowballStemmer('english').stem(w) for w in wordnet_lem ]
-        
+        stems = [nltk.stem.SnowballStemmer(
+            'english').stem(w) for w in wordnet_lem]
+
         # 8. Join the stemmed words back into one string separated by space, and return the result.
         return " ".join(stems)
 
     def clean_spell_checker(df):
-      
-        model = gensim.models.KeyedVectors.load_word2vec_format('https://s3.amazonaws.com/dl4j-distribution/GoogleNews-vectors-negative300.bin.gz', binary=True)
+
+        model = gensim.models.KeyedVectors.load_word2vec_format(
+            'https://s3.amazonaws.com/dl4j-distribution/GoogleNews-vectors-negative300.bin.gz', binary=True)
         words = model.index2word
         w_rank = {}
-        for i,word in enumerate(words):
+        for i, word in enumerate(words):
             w_rank[word] = i
 
         WORDS = w_rank
 
         def words(text): return re.findall(r'\w+', text.lower())
 
-        def P(word, N=sum(WORDS.values())): 
+        def P(word, N=sum(WORDS.values())):
             "Probability of `word`."
             return - WORDS.get(word, 0)
 
-        def correction(word): 
+        def correction(word):
             "Most probable spelling correction for word."
             return max(candidates(word), key=P)
 
-        def candidates(word): 
+        def candidates(word):
             "Generate possible spelling corrections for word."
             return (known([word]) or known(edits1(word)) or known(edits2(word)) or [word])
 
-        def known(words): 
+        def known(words):
             "The subset of `words` that appear in the dictionary of WORDS."
             return set(w for w in words if w in WORDS)
 
         def edits1(word):
             "All edits that are one edit away from `word`."
-            letters    = 'abcdefghijklmnopqrstuvwxyz'
-            splits     = [(word[:i], word[i:])    for i in range(len(word) + 1)]
-            deletes    = [L + R[1:]               for L, R in splits if R]
-            transposes = [L + R[1] + R[0] + R[2:] for L, R in splits if len(R)>1]
-            replaces   = [L + c + R[1:]           for L, R in splits if R for c in letters]
-            inserts    = [L + c + R               for L, R in splits for c in letters]
+            letters = 'abcdefghijklmnopqrstuvwxyz'
+            splits = [(word[:i], word[i:]) for i in range(len(word) + 1)]
+            deletes = [L + R[1:] for L, R in splits if R]
+            transposes = [L + R[1] + R[0] + R[2:]
+                          for L, R in splits if len(R) > 1]
+            replaces = [L + c + R[1:] for L, R in splits if R for c in letters]
+            inserts = [L + c + R for L, R in splits for c in letters]
             return set(deletes + transposes + replaces + inserts)
 
-        def edits2(word): 
+        def edits2(word):
             "All edits that are two edits away from `word`."
             return (e2 for e1 in edits1(word) for e2 in edits1(e1))
 
         def spell_checker(text):
-            all_words = re.findall(r'\w+', text.lower()) # split sentence to words
-            spell_checked_text  = []
+            # split sentence to words
+            all_words = re.findall(r'\w+', text.lower())
+            spell_checked_text = []
             for i in range(len(all_words)):
                 spell_checked_text.append(correction(all_words[i]))
             return ' '.join(spell_checked_text)
@@ -118,26 +121,26 @@ def predictIntention(text):
         df['clean'] = df['clean'].apply(spell_checker)
 
         return df
-        
+
     cleaned_word = []
+
     def clean(df):
         df['clean'] = df['clean'].apply(cleaning)
-        df = clean_spell_checker(df) 
+        df = clean_spell_checker(df)
         return df
-
 
     sentiment_vector = []
     vader_polarity = []
     sentiment_score = []
+
     def sentiment_analysis(df):
         senti = nltk.sentiment.vader.SentimentIntensityAnalyzer()
 
         def print_sentiment_scores(sentence):
             snt = senti.polarity_scores(sentence)
             # print("{:-<40} \n{}".format(sentence, str(snt)))
-            
-        print_sentiment_scores(df['clean'][0])
 
+        print_sentiment_scores(df['clean'][0])
 
         def get_vader_polarity(snt):
             if not snt:
@@ -149,7 +152,6 @@ def predictIntention(text):
             else:
                 return 0
 
-
         def get_polarity_type(sentence):
             sentimentVector = []
             snt = senti.polarity_scores(sentence)
@@ -158,68 +160,71 @@ def predictIntention(text):
             sentimentVector.append(snt['neu'])
             sentimentVector.append(snt['pos'])
             sentimentVector.append(snt['compound'])
-            
+
             return sentimentVector
 
         get_pols = get_polarity_type(text)
-            
+
         sentiment_vector = get_pols[1:]
         vader_polarity = get_pols[0]
         neg_score = get_pols[1]
         neu_score = get_pols[2]
         pos_score = get_pols[3]
         sentiment_score = get_pols[1:][-1]
-        
+
         df['sentiment_score'] = sentiment_score
         df['vader_polarity'] = vader_polarity
         return df
 
     def get_sensational_score(df):
         # sensational_words = pd.read_csv('./sensational_words_dict.csv', usecols=[0], sep='\t+', header=None)
-        sensational_words = pd.read_csv('./Datasets/sensational_words_dict.csv', usecols=[0], sep='\t+', header=None)
+        sensational_words = pd.read_csv(
+            '/content/common-alternusvera/Datasets/sensational_words_dict.csv', usecols=[0], sep='\t+', header=None)
         corpus = []
         corpus.append(text)
-        sensational_corpus=[]
+        sensational_corpus = []
         sensational_dictionary = ' '.join(sensational_words[0].astype(str))
         sensational_corpus.append(sensational_dictionary)
-        
+
         # sentic_net = pd.read_csv('./senticnet5.txt', sep="\t+", header=None, usecols=[0,1,2], names = ["Token", "Polarity", "Intensity"])
-        sentic_net = pd.read_csv('./Datasets/senticnet5.txt', sep="\t+", header=None, usecols=[0,1,2], names = ["Token", "Polarity", "Intensity"])
+        sentic_net = pd.read_csv('/content/common-alternusvera/Datasets/senticnet5.txt', sep="\t+", header=None,
+                                 usecols=[0, 1, 2], names=["Token", "Polarity", "Intensity"])
         warnings.filterwarnings("ignore")
-        sentic_net = sentic_net[~sentic_net['Token'].str.contains('|'.join('_'),na=False)]
+        sentic_net = sentic_net[~sentic_net['Token'].str.contains(
+            '|'.join('_'), na=False)]
         sentic_net = sentic_net.reset_index(drop=True)
         senti_pos = sentic_net.loc[sentic_net.Polarity == "positive"]
         senti_pos = senti_pos.loc[senti_pos.Intensity > 0.90]
         dictionary = ' '.join(senti_pos.Token.astype(str))
         sensational_corpus.append(dictionary)
-        
+
         tfidfVec = TfidfVectorizer(max_features=1000)
 
         train_tfidf = tfidfVec.fit_transform(df['clean'])
         max_f = train_tfidf.shape[1]
-        
+
         tfidfVec = TfidfVectorizer(max_features=max_f)
         tfidf_corpus = tfidfVec.fit_transform(corpus)
         tf_idf_senti = tfidfVec.fit_transform(sensational_corpus)
         words = tfidfVec.get_feature_names()
-        
+
         tfidf_corpus.toarray()
 
         tf_idf_senti.toarray()
 
         tfidfVec.vocabulary_
-        
+
         similarity_score = []
         for i in range(len(train_tfidf.toarray())):
-            similarity_score.append(1 - spatial.distance.cosine(tf_idf_senti[0].toarray(), tfidf_corpus[i].toarray()))
+            similarity_score.append(
+                1 - spatial.distance.cosine(tf_idf_senti[0].toarray(), tfidf_corpus[i].toarray()))
 
         df['sensational_score'] = similarity_score[0]
         return df
 
-
     def get_lda_score(df):
         data = df
-        train_lda = data[['clean','index']]
+        train_lda = data[['clean', 'index']]
         processed_docs = train_lda['clean'].map(lambda doc: doc.split(" "))
         # print(processed_docs)
         dictionary = gensim.corpora.Dictionary(processed_docs)
@@ -229,67 +234,68 @@ def predictIntention(text):
         # print(bow_corpus)
         tfidf = models.TfidfModel(bow_corpus)
         corpus_tfidf = tfidf[bow_corpus]
-        lda_model = gensim.models.LdaMulticore(bow_corpus, num_topics=10, id2word=dictionary, passes=2, workers=2)
-        lda_model_tfidf = gensim.models.LdaMulticore(corpus_tfidf, num_topics=10, id2word=dictionary, passes=2, workers=4)
+        lda_model = gensim.models.LdaMulticore(
+            bow_corpus, num_topics=10, id2word=dictionary, passes=2, workers=2)
+        lda_model_tfidf = gensim.models.LdaMulticore(
+            corpus_tfidf, num_topics=10, id2word=dictionary, passes=2, workers=4)
         for i, data in enumerate(bow_corpus):
             for index, score in sorted(lda_model_tfidf[bow_corpus[i]], key=lambda tup: -1*tup[1]):
                 df['lda_score'] = score
 
         return df
 
-    
     def get_POS(df):
         stop_words = set(stopwords.words('english'))
-        postags = ['CC','CD','DT','EX','FW','IN','JJ','JJR','JJS','LS','MD','NN','NNS','NNP','NNPS','PDT','POS','PRP','PRP$','RB','RBR','RBS','RP','SYM','TO','UH','VB','VBD','VBG','VBN','VBP','VBZ','WDT','WP','WP$','WRB']
+        postags = ['CC', 'CD', 'DT', 'EX', 'FW', 'IN', 'JJ', 'JJR', 'JJS', 'LS', 'MD', 'NN', 'NNS', 'NNP', 'NNPS', 'PDT', 'POS', 'PRP',
+                   'PRP$', 'RB', 'RBR', 'RBS', 'RP', 'SYM', 'TO', 'UH', 'VB', 'VBD', 'VBG', 'VBN', 'VBP', 'VBZ', 'WDT', 'WP', 'WP$', 'WRB']
 
-        for i,txt in enumerate(postags):
-          df[txt]=0.00
+        for i, txt in enumerate(postags):
+            df[txt] = 0.00
 
         def getTokerns(txt):
-          tokenized = sent_tokenize(txt)
-          for i in tokenized:
-              wordsList = nltk.word_tokenize(i)
-              wordsList = [w for w in wordsList if not w in stop_words]
-              tagged = nltk.pos_tag(wordsList)
-              counts = Counter(tag for (word, tag) in tagged)
-              total = sum(counts.values())
-              a = dict((word, float(count) / total) for (word, count) in
-                      counts.items())
-              return a;
+            tokenized = sent_tokenize(txt)
+            for i in tokenized:
+                wordsList = nltk.word_tokenize(i)
+                wordsList = [w for w in wordsList if not w in stop_words]
+                tagged = nltk.pos_tag(wordsList)
+                counts = Counter(tag for (word, tag) in tagged)
+                total = sum(counts.values())
+                a = dict((word, float(count) / total) for (word, count) in
+                         counts.items())
+                return a
 
-        for i,txt in enumerate(df['clean']):
-          a = getTokerns(txt)
-          for key in a:
+        for i, txt in enumerate(df['clean']):
+            a = getTokerns(txt)
+            for key in a:
                 if key in postags:
-                   df[key][i]=a[key]
+                    df[key][i] = a[key]
 
         return df
 
-
-    df_data = pd.DataFrame([[text,0]],columns=['clean', 'index'])
+    df_data = pd.DataFrame([[text, 0]], columns=['clean', 'index'])
     df_data = clean(df_data)
     df_data = sentiment_analysis(df_data)
     df_data = get_sensational_score(df_data)
     df_data = get_lda_score(df_data)
     df_data = get_POS(df_data)
-    
-    df = df_data.filter(items=['lda_score','sensational_score','sentiment_score','vader_polarity',
-                               'CC','CD','DT','EX','FW','IN','JJ','JJR','JJS','LS','MD','NN','NNS',
-                               'NNP','NNPS','PDT','POS','PRP','PRP$','RB','RBR','RBS','RP','SYM',
-                               'TO','UH','VB','VBD','VBG','VBN','VBP','VBZ','WDT','WP','WP$','WRB'])
-       
-    with open('./neural_net.pkl', 'rb') as file:  
-    # with open('./neural_net.pkl', 'rb') as file:  
+
+    df = df_data.filter(items=['lda_score', 'sensational_score', 'sentiment_score', 'vader_polarity',
+                               'CC', 'CD', 'DT', 'EX', 'FW', 'IN', 'JJ', 'JJR', 'JJS', 'LS', 'MD', 'NN', 'NNS',
+                               'NNP', 'NNPS', 'PDT', 'POS', 'PRP', 'PRP$', 'RB', 'RBR', 'RBS', 'RP', 'SYM',
+                               'TO', 'UH', 'VB', 'VBD', 'VBG', 'VBN', 'VBP', 'VBZ', 'WDT', 'WP', 'WP$', 'WRB'])
+
+    with open('/content/common-alternusvera/neural_net.pkl', 'rb') as file:
+        # with open('./neural_net.pkl', 'rb') as file:
         neural_net_model = pickle.load(file)
 
     pred = neural_net_model.predict(df)
     # print(pred[0])
-    
-    MI_Label_map={0:'pants-fire',
-                  1:'false',
-                  2:'barely-true',
-                  3:'half-true',
-                  4:'mostly-true',
-                  5:'true'}
+
+    MI_Label_map = {0: 'pants-fire',
+                    1: 'false',
+                    2: 'barely-true',
+                    3: 'half-true',
+                    4: 'mostly-true',
+                    5: 'true'}
 
     return MI_Label_map.get(pred[0])

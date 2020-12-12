@@ -119,7 +119,7 @@ class VerifiableAuthenticity:
         # Load Model
         filename = "/content/common-alternusvera/VerifiableAuthenticity_PickledModel.pkl"
         with open(filename, 'rb') as file:
-            # global Pickled_Model
+            global Pickled_Model
             Pickled_Model = pickle.load(file)
            # print(Pickled_Model)
 
