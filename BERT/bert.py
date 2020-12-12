@@ -18,8 +18,10 @@ class CerealKillers_SentimentClassifier(nn.Module):
         super(CerealKillers_SentimentClassifier, self).__init__()
         # self.tokenizer = BertTokenizer.from_pretrained('/content/CerealKillers_AlternusVera/BERT/saved_model/')
         # self.bert = BertModel.from_pretrained('/content/CerealKillers_AlternusVera/BERT/saved_model/')
-        self.tokenizer = BertTokenizer.from_pretrained('./saved_model/')
-        self.bert = BertModel.from_pretrained('./saved_model/')
+        self.tokenizer = BertTokenizer.from_pretrained(
+            '/content/common-alternusvera/BERT/saved_model/')
+        self.bert = BertModel.from_pretrained(
+            '/content/common-alternusvera/BERT/saved_model/')
         self.class_names = ['true', 'pants-fire']
         self.n_classes = len(self.class_names)
         self.drop = nn.Dropout(p=0.3)

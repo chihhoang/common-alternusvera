@@ -47,8 +47,8 @@ class CerealKillers_SocialCredibility:
         X = pd.DataFrame([data], columns=['followers', 'favorites', 'friends',
                                           'listed_count', 'statuses_count', 'status_retweeted', 'status_favorited'])
         #RFC = pickle.load( open("/content/CerealKillers_AlternusVera/SC/SocialCredibility.pkl", "rb") )
-        # RFC = pickle.load( open("/content/CerealKillers_AlternusVera/SC/SocialCredibilityV2.pkl", "rb") )
-        RFC = pickle.load(open("SocialCredibilityV2.pkl", "rb"))
+        RFC = pickle.load(
+            open("/content/common-alternusvera/SC/SocialCredibilityV2.pkl", "rb"))
         y = RFC.predict(X)
         return y[0]
 
